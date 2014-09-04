@@ -1,4 +1,5 @@
 echo "GrabVThash.sh searches Virus Total DB for MD5 values"
+# jsbrown, CCajigas
 echo ""
 echo "Usage: grabVThash.sh [file or hash...]" 
 echo ""
