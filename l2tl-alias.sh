@@ -1,7 +1,7 @@
 #!/bin/bash
 ## Command line builder for log2timeline
 # Mounts E01 and raw disk images on the fly
-# Built to use with Sift
+# Built to use with Sift so asumes the "/cases" directory exists
 #https://github.com/siftgrab/shellscripts
 # ~jsbrown
 ## Menu Option Seleted (Red output)
