@@ -237,8 +237,8 @@ echo ""
 read -p "Would you like to proceed (Y/N)?"
 [ "$(echo $REPLY | tr [:upper:] [:lower:])" == "y" ] || exit; 
 [ -d /cases/$OPATH ] || mkdir /cases/$OPATH           
-$L2TL -w /cases/$OPATH.csv
+$L2TL -w /cases/$OPATH
 echo ""
 makegreen "   Timeline Results file:"
-makegreen "   /cases/$OPATH.csv"
+makegreen "   /cases/$OPATH"
 read -n1 -r -p "   Press any key to continue..." key
