@@ -53,7 +53,7 @@ echo "A path to an image mount point or disk image file"
       echo ""
       makered "ENTER INPUT PATH";
       read -e -p "INPUT PATH:" -i "" IPATH
-      makered "ERROR:  Disk Image file or directory path not found!"
+      [ -f "$IPATH" ] || [ -d "$IPATH" ] || makered "ERROR:  Disk Image file or directory path not found!" 
       [ -f "$IPATH" ] || [ -d "$IPATH" ] || exit
       clear
 }
