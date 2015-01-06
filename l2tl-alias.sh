@@ -52,7 +52,7 @@ echo "A path to an image mount point or disk image file"
       echo ""
       makered "ENTER INPUT PATH";
       read -e -p "INPUT PATH:" -i "" IPATH
-      [ -f "$IPATH" ] || [ -d "$IPATH" ] || makered "ERROR: Invalid image file or path!" 
+      [ -f "$IPATH" ] || [ -d "$IPATH" ] || IPATH="INVALID INPUT PATH" | makered "ERROR: Invalid image file or path!" 
       # [ -f "$IPATH" ] || [ -d "$IPATH" ] || exit
 }
 
