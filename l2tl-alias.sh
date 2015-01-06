@@ -1,7 +1,6 @@
 #!/bin/bash
 ## Command line builder for log2timeline
 # Mounts E01 and raw disk images on the fly
-# Built to use with Sift so asumes the "/cases" directory exists
 #https://github.com/siftgrab/shellscripts
 # ~jsbrown
 ## Menu Option Seleted (Red output)
@@ -53,9 +52,8 @@ echo "A path to an image mount point or disk image file"
       echo ""
       makered "ENTER INPUT PATH";
       read -e -p "INPUT PATH:" -i "" IPATH
-      [ -f "$IPATH" ] || [ -d "$IPATH" ] || makered "ERROR:  Disk Image file or directory path not found!" 
-      [ -f "$IPATH" ] || [ -d "$IPATH" ] || exit
-      clear
+      [ -f "$IPATH" ] || [ -d "$IPATH" ] || makered "ERROR: Invalid image file or path!" 
+      # [ -f "$IPATH" ] || [ -d "$IPATH" ] || exit
 }
 
 #Set TimeZone 
@@ -222,7 +220,7 @@ makegreen "COLLECTION NAME:  $OPATH"
 makegreen "INPUT MODULE(S):  $OSTYPE"
 makegreen "DATA SOURCE PATH: $IPATH"
 makegreen "TIMEZONE SETTING: $TLTZ"
-makegreen "OUTPUT PATH:      /cases/$OPATH"
+makegreen "OUTPUT PATH:      $OPATH"
 [ "$(ls -A $IPATH)" ] && makegreen "STATUS: FILES READY TO PROCESS" || makered "STATUS: NO FILES TO PROCESS"
 makegreen "OUTPUT FORMAT:    $OFORMAT" 
 echo ""
@@ -236,9 +234,9 @@ echo "$L2TL -w /cases/$OPATH"
 echo ""
 read -p "Would you like to proceed (Y/N)?"
 [ "$(echo $REPLY | tr [:upper:] [:lower:])" == "y" ] || exit; 
-[ -d /cases/$OPATH ] || mkdir /cases/$OPATH           
-$L2TL -w /cases/$OPATH
+[ -d $OPATH ] || mkdir $OPATH           
+$L2TL -w $OPATH
 echo ""
 makegreen "   Timeline Results file:"
-makegreen "   /cases/$OPATH"
+makegreen "   $OPATH"
 read -n1 -r -p "   Press any key to continue..." key
