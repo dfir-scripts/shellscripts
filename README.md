@@ -1,3 +1,3 @@
 shellscripts
 ============
-Siftgrab is a collection of scripts that were written to compliment the tools installed on the SANS Sift Kit
+scripts that do forensic tasks and may rely on SANS Sift Kit to work properly
