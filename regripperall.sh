@@ -1,6 +1,6 @@
 #!/bin/bash
 # Regripper extractor
-# Searches mounted NTFS volumes, directories for registry hives and uses regripper to extracts output to TLN and text files to a directory based on computer name.  Can alternatively be used on single registry hives
+# Searches mounted NTFS volumes for registry hives and uses regripper to extracts output to TLN and text files to a directory based on computer name. 
  
 #Get Computer Name using Regripper's "comp_name" plugin
 function get_computer_name(){
@@ -217,7 +217,7 @@ function del_no_result(){
 
 function usage(){
 echo ""
-echo "     Usage: $0 <NTFS volume root path or directory containing registry hive(s)> 
+echo "     Usage: $0 <NTFS volume root path> 
           optional: <output directory>  
                     -h  help
                     
