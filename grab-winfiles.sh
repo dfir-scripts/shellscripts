@@ -76,9 +76,9 @@ function set_dsource_path(){
       makered "SET CASE DESTINATION FOLDER (Default = /cases/)"
       echo "Set Path or Enter to Accept:"
       read -e -p "" -i "/cases" case_dir
-      [ ! -d "${case_dir}" ] && makered "Path does not exist.." && sleep 2 && show_menu
+      [ ! -d "${case_dir}" ] && makered "Path does not exist.." && sleep 2 && exit 0
       cd $case_dir
-      [ ! -d "${case_dir}" ] && makered "Path does not exist.." && sleep 1 && show_menu
+      [ ! -d "${case_dir}" ] && makered "Path does not exist.." && sleep 1 && exit 0
 }
 function check_dsource_path(){
       [ -d "$triage_dir" ] && echo "$case_dir already exists! overwrite?" && yes-no && rm -r $triage_dir && quit="no"
@@ -95,7 +95,7 @@ function set_windir(){
       user_dir=$(find $mount_dir -maxdepth 1 -type d |grep -m1 -io users$)
       regdir=$(find $mount_dir/$winsysdir -maxdepth 2 -type d |egrep -m1 -io \/config$)
       evtxdir=$(find $mount_dir/$winsysdir -maxdepth 2 -type d |egrep -m1 -io \/winevt\/Logs$)
-      [ "$windir" == "" ] || [ "$winsysdir" == "" ] && makered "No Windows Directory Path Found on Source..." && sleep 2 && show_menu
+      [ "$windir" == "" ] || [ "$winsysdir" == "" ] && makered "No Windows Directory Path Found on Source..." && sleep 2 && exit 0
       echo "Windows System32 Directory => $mount_dir$winsysdir"
       echo  "Registry Directory" $mount_dir$winsysdir$regdir
       echo  "Windows Eventlog Directory" $mount_dir$winsysdir$evtxdir
