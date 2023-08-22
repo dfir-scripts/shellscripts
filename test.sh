@@ -287,6 +287,7 @@ while [ opt != '' ]
            get_evtxsize
            save_artifacts
            source /envs/dfir/bin/activate
+           start_time=$SECONDS
           #todo  event_transcript_parser
           repair_hives
           jumplink_parser
@@ -310,15 +311,14 @@ while [ opt != '' ]
           srum_dump
           kstrike_current.mdb
           bits_parser
+          extract_winactivities
+          extract_PCA
           evtx_dump_json
           Winevtx_parse
           zircolite_evtx
-          extract_winactivities
-          extract_PCA
           analyze_mft
           dump_mft
           [ "$usn" ] && parse_usn
-           ads_extract
            consolidate_timeline
            scan_for_lolbas
            [ "$artifacts" ] && cp_artifacts
@@ -331,6 +331,9 @@ while [ opt != '' ]
            make_green "The Processed Artifacts are Located in $triage_dir"
            du -sh $triage_dir
            make_green Process Complete!
+           elapsed=$(( SECONDS - start_time ))
+           date >> $triage_dir/Triage-Timestamp.txt
+           eval "echo Elapsed time: $(date -ud "@$elapsed" +' %H hrs %M mins %S secs')" |tee -a $triage_dir/Triage-Timestamp.txt
            read -n1 -r -p "Press any key to continue..." key
            show_menu;
             ;;
@@ -471,12 +474,12 @@ function get_computer_name(){
 
 #Create Output Directory
 function create_triage_dir(){
-triage_dirs=("ActivitiesCache" "Alert" "BITS" "Browser_Activity" "UserAccessLog" "LNK" "MFT" "WMI" "PowerShell" "Prefetch" \
-"RDP" "Registry/Regripper/Account_Info" "Registry/Regripper/File_Access" "Registry/Regripper/Program_Execution" \
-"Registry/Regripper/Run_Keys" "Registry/Regripper/CLSID" "Registry/Regripper/Settings" "Registry/Regripper/System_Info/Network" \
-"Registry/Regripper/System_Info/Software" "USB" "Registry/Regripper/USERS" "Registry/Regripper/User_Searches" \
-"Registry/yarp-registryflush.py" "Registry/Impacket" "ScheduledTasks" "Services" "SRUM" "Timeline" \
-"Deleted_Files" "USNJRNL" "WindowsEventLogs" "lolbas" "EventTranscript" "PCA" "LogFile")
+triage_dirs=("ActivitiesCache" "ADS" "Alert" "Amcache" "BITS" "Browser_Activity" "Deleted_Files" "EventTranscript" "LNK" "LogFile" \
+"lolbas" "MFT" "PCA"  "PowerShell" "Prefetch" "RDP" "Registry/Regripper/Account_Info" "Registry/Regripper/File_Access" \
+"Registry/Regripper/Program_Execution" "Registry/Regripper/Run_Keys" "Registry/Regripper/CLSID" "Registry/Regripper/Settings" \
+"Registry/Regripper/System_Info/Network" "Registry/Regripper/System_Info/Software" "USB" "Registry/Regripper/USERS" \
+"Registry/Regripper/User_Searches" "Registry/yarp-registryflush.py" "Registry/Impacket" "ScheduledTasks" "Services" "SRUM" \
+"Timeline" "USNJRNL" "UserAccessLog" "WindowsEventLogs" "WMI")
     for dir_names in "${triage_dirs[@]}";
     do
       mkdir -p $triage_dir/$dir_names
@@ -1112,12 +1115,12 @@ function rip_ntuser_usrclass(){
 
 #Run RegRipper on AmCache.hve
 function rip_amcache.hve(){
-    make_green "Extracting Any RecentFileCache/AmCache (Regripper)"
+    make_green "Extracting Any RecentFileCache/AmCache (amcache.py)"
   if [ -f "$amcache_hive" ]; then
     rip.pl -aT -r "$amcache_hive" 2>/dev/null | sed "s/|||/|${comp_name}|${user_name}|/" \
     >> $tempfile
     rip.pl -r "$amcache_hive" -p amcache 2>/dev/null \
-    >> "$triage_dir/Registry/Regripper/Program_Execution/Amcache-$comp_name.txt"
+    >> "$triage_dir/Amcache/Amcache-$comp_name.txt"
   fi
 }
 
@@ -1164,19 +1167,15 @@ function winservices(){
     sleep 1
     /envs/dfir/bin/python3 /opt/app/dfir-scripts/python/winservices.py $system_hive |sort -r \
     >> $triage_dir/Services/winservices.py-$comp_name.csv;
-
-    find $triage_dir/Services/ -type f |grep "winservices" | \
-    while read d;
-    do
-      cat "$d" |while read f;
+    if [ -f "$triage_dir/Services/winservices.py-$comp_name.csv" ]; then
+      cat "$triage_dir/Services/winservices.py-$comp_name.csv" |grep -P ^[0-9]{4} | while read f;
         do
           timestamp=$(echo "$f" awk -F',' '{print $1}'| grep -Eo '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1]) (2[0-3]|[01][0-9]):[0-5][0-9]:[0-5][0-9]')
           tlntime=$(date -d "$timestamp"  +"%s" 2>/dev/null)
-
           tlninfo=$(echo "$f"| awk -F',' '{print "||[Service Last Write]: "$2";"$3";"$5";"$7";"$8}')
           echo $tlntime"|Svc|"$comp_name$tlninfo >> $tempfile
         done
-    done
+    fi
   fi
 }
 
@@ -1330,7 +1329,8 @@ function chrome2tln(){
     do
       cat "$d" |while read line;
       do
-        timestamp=$(echo $line| awk -F',' '{print $1}')
+        timestamp=$(echo $line| awk -F',' '{print $1}' | \
+        grep -Eo '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1]) (2[0-3]|[01][0-9]):[0-5][0-9]:[0-5][0-9]')
         [ "$timestamp" != "" ] && tlntime=$(date -d "$timestamp"  +"%s" 2>/dev/null)
         [ "$tlntime" != "" ] && tlninfo=$(echo "$f"| awk -F',' '{print "|"$2"|"$3"|"$4"|"$5}')
         tlninfo=$(echo "$line"| awk -F',' '{print "|"$2"|"$3"|"$4"|"$5}')
@@ -1385,7 +1385,7 @@ function firefox2tln(){
     do
       echo "$d"| while read f;
         do
-        timestamp=$(echo "$f"| awk -F',' '{print $1}')
+        timestamp=$(echo "$f"| awk -F',' '{print $1}' | grep -Eo '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1]) (2[0-3]|[01][0-9]):[0-5][0-9]:[0-5][0-9]')
           [ "$timestamp" != "" ] && tlntime=$(date -d "$timestamp"  +"%s" 2>/dev/null)
           tlninfo=$(echo "$f"| awk -F',' '{print "|"$2"|"$3"|"$4"|"$5}')
           [ "$tlninfo" != "" ] && echo $tlntime$tlninfo  >> $tempfile
@@ -1405,7 +1405,7 @@ function webcachev_dump(){
       find /$mount_dir/$user_dir/$user_name/AppData/Local/Microsoft/Windows/WebCache -maxdepth 2 -type f -iname "WebcacheV*.dat" 2>/dev/null |\
       while read d;
       do
-        /usr/bin/esedbexport -t $triage_dir/Browser_Activity/esedbexport-Webcachev01.dat-$user_name-$comp_name "$d";
+        /usr/bin/esedbexport -t $triage_dir/Browser_Activity/esedbexport-Webcachev01.dat-$user_name-$comp_name "$d" 2>/dev/null;
       done
       find $triage_dir/Browser_Activity/esedbexport-Webcachev01.dat-$user_name-$comp_name.export -type d 2>/dev/null| \
       while read dir;
@@ -1449,6 +1449,78 @@ function bits_parser(){
     /envs/dfir/bin/python /usr/local/src/BitsParser/BitsParser.py -i \
     /mnt/image_mount/ProgramData/Microsoft/Network/Downloader/ --carvedb --carveall 2>/dev/null \
     >> $triage_dir/BITS/BitsParser.py-$comp_name.csv
+  fi
+}
+
+#Parse Windows History File
+extract_winactivities(){
+    Winactivities_file=$(find $user_dir/*/AppData/Local/C*m/ -type f 2>/dev/null |grep -i -m 1 ActivitiesCache.db$)
+    if [ -f "$Winactivities_file" ]; then
+      make_green "Searching for ActivitiesCache.db"
+      cd $mount_dir/$user_dir/
+      find "$mount_dir/$user_dir/" -maxdepth 2 ! -type l|grep -i ntuser.dat$ |\
+      while read ntuser_path;
+      do
+        user_name=$( echo "$ntuser_path"|sed 's/\/$//'|awk -F"/" '{print $(NF-1)}')
+        find "$mount_dir/$user_dir/$user_name/AppData/Local/ConnectedDevicesPlatform" -maxdepth 5 -type f 2>/dev/null | \
+        grep -i "ActivitiesCache.db$"| sed 's|^\./||'|\
+        while read d;
+        do
+          sqlite3 "$d" ".read /opt/app/kacos2000/WindowsTimeline/WindowsTimeline.sql" \
+          >> $triage_dir/ActivitiesCache/WindowsTimeline.sql-$user_name-$comp_name.csv
+       done
+    done
+    find $triage_dir/ActivitiesCache/ -type f 2>/dev/null |grep WindowsTimeline.sql | \
+    while read f;
+    do
+      profile_name=$(echo "$f"|awk -F'Timeline.sql-' '{print $NF}')
+      echo -e "******  $profile_name  ******\n Count File"  >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
+       cat "$f" 2>/dev/null| \
+       awk -F'|' '{print $3}'|grep  exe|awk -F'\' '{print $NF}'|sort |uniq -c|sort -rn \
+       >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
+       cat "$f" 2>/dev/null| \
+       awk -F'|' '{print $3}'|grep -v exe|awk -F'\' '{print $NF}'|sort |uniq -c|sort -rn \
+       >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
+    done
+  fi
+}
+
+extract_PCA(){
+  cd $mount_dir
+  if [ -f $mount_dir/$windir/appcompat/pca/PcaAppLaunchDic.txt ]; then
+    make_green "Searching for Windows 11 Program Compatibility Assistant"
+    cat $mount_dir/$windir/appcompat/pca/PcaAppLaunchDic.txt | \sed 's|\\|\\\\|g' |\
+    while read d;
+    do
+      timestamp=$(echo "$d" | awk -F'|' '{print $2}')
+      pca_path=$(echo "$d" | awk -F'|' '{print $1}')
+      tln_time=$(date -d "$timestamp"  +"%s" 2>/dev/null)
+      tl_time=$(echo $tln_time | awk '{$0=strftime("%Y-%m-%d %H:%M:%S",$0)}{print $0}')
+      tln_line=$tln_time"|PCAdic|"$comp_name"||Program Execution:"$pca_path
+      tl_line=$tl_time",PCA,"$comp_name",,Program Execution:"$pca_path
+      echo $tl_line >> $triage_dir/PCA/PcaAppLaunchDic.txt
+      echo $tln_line  >> $tempfile
+    done
+
+    find $mount_dir/$windir/appcompat/pca/PcaGeneralDb[0-9].txt |\
+    while read d;
+    do
+      file_name=$(echo "$d" |awk -F'pca/' '{print $2}')
+      echo  "Runtime,Run_status,Exe_path,Description,Software_vendor,File_version,ProgramId,Exitcode" \
+      >> $triage_dir/PCA/$file_name
+      cat "$d"| tr -d '\000' | sed 's/|/,/g' \
+      >> $triage_dir/PCA/$file_name
+
+      cat "$d" | sed 's|\\|\\\\|g' 2>/dev/null|\
+      while read f;
+      do
+        timestamp=$(echo "$f" | awk -F'|' '{print $1}')
+        pca_path=$(echo "$f" | awk -F'|' '{print $3}')
+        tln_time=$(date -d "$timestamp"  +"%s" 2>/dev/null)
+        tln_line=$tln_time"|PCAdb|"$comp_name"||Program Execution:"$pca_path
+        echo $tln_line  >> $tempfile
+      done
+    done
   fi
 }
 
@@ -1626,78 +1698,7 @@ function zircolite_evtx(){
   fi
 }
 
-#Parse Windows History File
-extract_winactivities(){
-    Winactivities_file=$(find $user_dir/*/AppData/Local/C*m/ -type f 2>/dev/null |grep -i -m 1 ActivitiesCache.db$)
-    if [ -f "$Winactivities_file" ]; then
-      make_green "Searching for ActivitiesCache.db"
-      cd $mount_dir/$user_dir/
-      find "$mount_dir/$user_dir/" -maxdepth 2 ! -type l|grep -i ntuser.dat$ |\
-      while read ntuser_path;
-      do
-        user_name=$( echo "$ntuser_path"|sed 's/\/$//'|awk -F"/" '{print $(NF-1)}')
-        find "$mount_dir/$user_dir/$user_name/AppData/Local/ConnectedDevicesPlatform" -maxdepth 5 -type f 2>/dev/null | \
-        grep -i "ActivitiesCache.db$"| sed 's|^\./||'|\
-        while read d;
-        do
-          sqlite3 "$d" ".read /opt/app/kacos2000/WindowsTimeline/WindowsTimeline.sql" \
-          >> $triage_dir/ActivitiesCache/WindowsTimeline.sql-$user_name-$comp_name.csv
-       done
-    done
-    find $triage_dir/ActivitiesCache/ -type f 2>/dev/null |grep WindowsTimeline.sql | \
-    while read f;
-    do
-      profile_name=$(echo "$f"|awk -F'Timeline.sql-' '{print $NF}')
-      echo -e "******  $profile_name  ******\n Count File"  >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
-       cat "$f" 2>/dev/null| \
-       awk -F'|' '{print $3}'|grep  exe|awk -F'\' '{print $NF}'|sort |uniq -c|sort -rn \
-       >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
-       cat "$f" 2>/dev/null| \
-       awk -F'|' '{print $3}'|grep -v exe|awk -F'\' '{print $NF}'|sort |uniq -c|sort -rn \
-       >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
-       echo "**************************" >> $triage_dir/ActivitiesCache/ActivitiesCache-stats.txt
-    done
-  fi
-}
 
-extract_PCA(){
-  cd $mount_dir
-  if [ -f $mount_dir/$windir/appcompat/pca/PcaAppLaunchDic.txt ]; then
-    make_green "Searching for Windows 11 Program Compatibility Assistant"
-    cat $mount_dir/$windir/appcompat/pca/PcaAppLaunchDic.txt | \sed 's|\\|\\\\|g' |\
-    while read d;
-    do
-      timestamp=$(echo "$d" | awk -F'|' '{print $2}')
-      pca_path=$(echo "$d" | awk -F'|' '{print $1}')
-      tln_time=$(date -d "$timestamp"  +"%s" 2>/dev/null)
-      tl_time=$(echo $tln_time | awk '{$0=strftime("%Y-%m-%d %H:%M:%S",$0)}{print $0}')
-      tln_line=$tln_time"|PCAdic|"$comp_name"||Program Execution:"$pca_path
-      tl_line=$tl_time",PCA,"$comp_name",,Program Execution:"$pca_path
-      echo $tl_line >> $triage_dir/PCA/PcaAppLaunchDic.txt
-      echo $tln_line  >> $tempfile
-    done
-
-    find $mount_dir/$windir/appcompat/pca/PcaGeneralDb[0-9].txt |\
-    while read d;
-    do
-      file_name=$(echo "$d" |awk -F'pca/' '{print $2}')
-      echo  "Runtime,Run_status,Exe_path,Description,Software_vendor,File_version,ProgramId,Exitcode" \
-      >> $triage_dir/PCA/$file_name
-      cat "$d"| tr -d '\000' | sed 's/|/,/g' \
-      >> $triage_dir/PCA/$file_name
-
-      cat "$d" | sed 's|\\|\\\\|g' 2>/dev/null|\
-      while read f;
-      do
-        timestamp=$(echo "$f" | awk -F'|' '{print $1}')
-        pca_path=$(echo "$f" | awk -F'|' '{print $3}')
-        tln_time=$(date -d "$timestamp"  +"%s" 2>/dev/null)
-        tln_line=$tln_time"|PCAdb|"$comp_name"||Program Execution:"$pca_path
-        echo $tln_line  >> $tempfile
-      done
-    done
-  fi
-}
 #Extract MFT to body file and then to TLN and csv files
 function analyze_mft(){
   if [ "ls $mount_dir/\$MFT 2>/dev/null" ]; then
@@ -1724,20 +1725,17 @@ function dump_mft(){
   if [ "ls $mount_dir/\$MFT 2>/dev/null" ]; then
     make_green "Extracting MFT (MFT_Dump)"
     mft_dump \$MFT -o csv -f $triage_dir/MFT/MFT_Dump-$comp_name.csv
+    #Find Unallocated files
+    make_green "Locating Unallocated files"
     cat $triage_dir/MFT/MFT_Dump-$comp_name.csv| \
     awk -F',' '{if($12 =="true" && $11=="false") print substr($20,1,19)",DELETED,,,FILE Last Write: SI="substr($16,1,19)";"$22;
     else if($12 =="true" && $11=="true") print substr($20,1,19)",DELETED,,,DIRECTORY Last Write: SI="substr($16,1,19)";"$22;}'| \
     sed 's/T/ /1' >> $triage_dir/Deleted_Files/MFT-UNALLOCATED-$comp_name.csv
-
-    make_green "Locating Unallocated files"
-    make_green "Standby..."
-    cat $triage_dir/Deleted_Files/MFT-UNALLOCATED-$comp_name.csv | \
-    while read d;
-    do
-      timestamp=$(echo "$d" | awk -F',' '{print $1}')
-      [ "$timestamp" != "" ] && tlntime=$(date -d "$timestamp"  +"%s" 2>/dev/null)
-      [ "$timestamp" != "" ] && echo $tlntime"|"$2"|"$comp_name"|"$4"|"$5 >> $tempfile  
-    done
+    #find ADS
+    make_green "Locating Files with Alternate Data Streams (ADS)"
+    cat $triage_dir/MFT/MFT_Dump-$comp_name.csv| \
+    awk -F',' '{if($13 =="true") print substr($20,1,19)",ADS,$comp_name,,FILE Last Write: SI="substr($16,1,19)";"$22;}' \
+    | sed 's/T/ /1' |grep -P ^[0-9]{4} >> $triage_dir/ADS/AlternateDataStreams-$comp_name.csv
   fi  
 }
 
@@ -1759,24 +1757,6 @@ function parse_usn(){
   fi
 }
 
-#Timeline Alternate Data Streams
-function ads_extract(){
-    cd $mount_dir
-    make_green "Scanning mounted NTFS disk Alternate Data Streams and Timestamps "
-    [ "$(getfattr -n ntfs.streams.list $mount_dir 2>/dev/null)" ]  && make_green "Extracting Alternate Data Streams (getfattr)
-Standby..." && getfattr -Rn ntfs.streams.list . 2>/dev/null |\
-    grep -ab1 -h ntfs.streams.list=|grep -a : |sed 's/.*ntfs.streams.list\="/:/g'|\
-    sed 's/.*# file: //'|sed 's/"$//g'|paste -d "" - -|grep -v :$ | while read ADS_file;
-    do
-      base_file=$(echo "$ADS_file"|sed 's/:.*//')
-      crtime=$(getfattr -h -e hex -n system.ntfs_times_be "$base_file" 2>/dev/null|grep "="|awk -F'=' '{print $2}'|grep -o '0x................')
-      [ "$crtime" ] && epoch_time=$(echo $(($crtime/10000000-11644473600)))
-      [ $epoch_time ] || epoch_time="0000000000"
-      MAC=$(stat --format=%y%x%z "$base_file" 2>/dev/null)
-      [ "$ADS_file" ] && echo "$epoch_time|ADS|$comp_name||[ADS Created]: $ADS_file [MAC]: $MAC"|grep -va "ntfs.streams.list\=" >> $tempfile
-    done
-}
-
 #Consolidating TLN Output and consolidating timelines
 function consolidate_timeline(){
     make_green "Consolidating TLN Files"
@@ -1787,8 +1767,6 @@ function consolidate_timeline(){
     >> $timeline_dir/Triage-Timeline-$comp_name.csv
     cat $timeline_dir/Triage-Timeline-$comp_name.csv|grep -ia ",alert," \
     >> $triage_dir/Alert/RegRipperAlerts-$comp_name.csv
-    cat $timeline_dir/Triage-Timeline-$comp_name.csv|grep Zone.Identifier \
-    >> $triage_dir/Browser_Activity/Zone.Identifier-$comp_name.csv
     make_green "Complete!"
 }
 
@@ -1821,7 +1799,7 @@ function scan_for_lolbas(){
     make_green "Searching for executables identified as lolbas in Windows Event Logs"
     cd $triage_dir/WindowsEventLogs/evtx_dump/
     echo "lolbas files in Windows Event Logs (https://lolbas-project.github.io/)
-    ****************************************************************************
+   
     " >> $triage_dir/lolbas/lolbas-in-evtx.txt
 
     ls |\
@@ -1839,26 +1817,23 @@ function scan_for_lolbas(){
   if [ -f "$timeline_dir/Triage-Timeline-$comp_name.csv" ]; then
     make_green "Searching for executables identified as lolbas in $timeline_dir/Triage-Timeline-$comp_name.csv"
     echo "lolbas files in Triage-Timeline-$comp_name.csv (https://lolbas-project.github.io/)
-    ****************************************************************************
+   
     " >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
     echo "$d
     ********************************************
     Count Lolfile" >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
     /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
     $timeline_dir/Triage-Timeline-$comp_name.csv -l /usr/local/src/lolbas/lolbas.csv | \
-    awk -F',' '{print $1}'|sort |uniq -c |sort -rn 
+    awk -F',' '{print $1}'|sort |uniq -c |sort -rn \
     >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
   fi
     #***** Lolbas in SRUM Dump *****************************
   if [  -f "$triage_dir/SRUM/srum_dump-$comp_name.xlsx" ]; then
-  make_green "Searching for executables identified as lolbas in srum_dump-$comp_name.xlsx
-    (https://lolbas-project.github.io/)
-    ***********************************
-    "
-  cd "$triage_dir/SRUM/"
-  sudo ssconvert -S "srum_dump-$comp_name.xlsx" srum_dump-$comp_name.csv 2>/dev/null && \
+    make_green "Searching for executables identified as lolbas in srum_dump-$comp_name.xlsx"
+    cd "$triage_dir/SRUM/"
+    sudo ssconvert -S "srum_dump-$comp_name.xlsx" srum_dump-$comp_name.csv 2>/dev/null && \
       echo "lolbas files in srum_dump-$comp_name.xlsx (https://lolbas-project.github.io/)
-    ****************************************************************************
+    
     ">> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt 
     ls *csv* |\
     while read d;
@@ -1873,8 +1848,8 @@ Count Lolfile" >> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt
   fi
   #***** Lolbas in Windows Timeline *****************************
   find $triage_dir/ActivitiesCache/ -type f 2>/dev/null |grep WindowsTimeline.sql | \
-   while read f;
-   do
+    while read f;
+    do
       profile_name=$(echo "$f"|awk -F'Timeline.sql-' '{print $NF}')
       cat "$f" 2>/dev/null| awk -F'|' '{print $3}'|grep  exe|awk -F'\' '{print $NF}' >> /tmp/exe.txt
       [ -f "/tmp/exe.txt" ] && echo -e "******  $profile_name  ******\n Count File"  >> $triage_dir/lolbas/lolbas-in-ActivitiesCache-$comp_name.txt
@@ -1882,6 +1857,7 @@ Count Lolfile" >> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt
       >> $triage_dir/lolbas/lolbas-in-ActivitiesCache-$comp_name.txt
       rm /tmp/exe.txt
     done
+    [ -f "$triage_dir/lolbas/lolbas-in-ActivitiesCache-$comp_name.txt" ] && sed -i "1i lolbas files in ActivitiesCache.db (https://lolbas-project.github.io/)" $triage_dir/lolbas/lolbas-in-ActivitiesCache-$comp_name.txt
 }
 
 #function event_transcript_parser(){
@@ -1893,8 +1869,6 @@ Count Lolfile" >> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt
 #    /envs/dfir/bin/python /usr/local/src/EventTranscriptParser/EventTranscriptParser.py -f "$d" -o $triage_dir/EventTranscript/EventTranscript-$comp_name.csv
 #    done  
 #}
-
-
 
 clear
 [ $(whoami) != "root" ] && make_red "dfir-scripts Requires Root!" && exit
