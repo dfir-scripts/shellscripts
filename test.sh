@@ -1128,7 +1128,7 @@ function rip_amcache.hve(){
 function secrets_dump(){
   if [ -f "$sam_hive" ]; then
     make_green "Dumping Hashes and LSA Secrets (secrets_dump.py)"
-    /envs/dfir/bin/python /usr/share/doc/python3-impacket/examples/secretsdump.py \
+    python /usr/share/doc/python3-impacket/examples/secretsdump.py \
     -sam $sam_hive -system $system_hive -security $security_hive local \
     >> $triage_dir/Registry/Impacket/secrets_dump-$comp_name.txt
   fi
@@ -1141,7 +1141,7 @@ function timeline_registry(){
     make_green "Timelining Registry (regtime.pl)"
     for hive in "${registry_hives[@]}";
     do
-      regtime.pl -r $hive | sed "s/|||/|${comp_name}|${user_name}|/" \
+      regtime.pl -r $hive 2>/dev/null | sed "s/|||/|${comp_name}|${user_name}|/" \
       >> $timeline_dir/Registry-timeline-$comp_name.TLN
     done
     cd $mount_dir/$user_dir/
@@ -1149,7 +1149,7 @@ function timeline_registry(){
     while read ntuser_path;
     do
       user_name=$( echo "$ntuser_path"|sed 's/\/$//'|awk -F"/" '{print $(NF-1)}')
-      [ "$user_name" ] && regtime.pl -r "${ntuser_path}" | \
+      [ "$user_name" ] && regtime.pl -r "${ntuser_path}" 2>/dev/null | \
       sed "s/|||/|${comp_name}|${user_name}|/" \
       >> $timeline_dir/Registry-timeline-$comp_name.TLN
     done
@@ -1741,7 +1741,7 @@ function dump_mft(){
 
 #Extract $USNJRNL:$J to TLN
 function parse_usn(){
-  if [ "ls $mount_dir/\$USNJRNL:$J 2>/dev/null" ]; then
+  if [ -f "$mount_dir/\$USNJRNL:$J" ]; then
     cd $mount_dir
     make_green "Extracting \$USNJRNL:$J (usn.py)
     Standby..."
@@ -1760,14 +1760,12 @@ function parse_usn(){
 #Consolidating TLN Output and consolidating timelines
 function consolidate_timeline(){
     make_green "Consolidating TLN Files"
-    echo ""
     cat $tempfile | sort -rn |uniq \
     >> $timeline_dir/Triage-Timeline-$comp_name.TLN;
     cat $tempfile |awk -F'|' '{$1=strftime("%Y-%m-%d %H:%M:%S",$1)}{print $1","$2","$3","$4","$5}'|sort -rn | uniq| grep -va ",,,," \
     >> $timeline_dir/Triage-Timeline-$comp_name.csv
     cat $timeline_dir/Triage-Timeline-$comp_name.csv|grep -ia ",alert," \
     >> $triage_dir/Alert/RegRipperAlerts-$comp_name.csv
-    make_green "Complete!"
 }
 
 #Get a copy of $MFT, WinEvents, Registry and Logs
@@ -1796,56 +1794,86 @@ function cp_artifacts(){
 
 function scan_for_lolbas(){
   if  [ "$(ls -A $triage_dir/WindowsEventLogs/evtx_dump/ 2>/dev/null)" ]; then
-    make_green "Searching for executables identified as lolbas in Windows Event Logs"
-    cd $triage_dir/WindowsEventLogs/evtx_dump/
-    echo "lolbas files in Windows Event Logs (https://lolbas-project.github.io/)
-   
-    " >> $triage_dir/lolbas/lolbas-in-evtx.txt
-
-    ls |\
-    while read d;
-    do
-      a=$(/envs/dfir/bin/python3 /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p  "$d" -l /usr/local/src/lolbas/lolbas.csv|\
-      awk -F',' '{print $1}'|sort |uniq -c |sort -rn)
-      [ "$a" != '' ] && echo "********************************************" && \
-      echo $d && echo $a|sed -E 's/([0-9]+) /\t \n  \1 /g' 
-    done \
-    >> $triage_dir/lolbas/lolbas-in-evtx.txt
+    make_green "Searching for executables identified as lolbas"
+    /envs/dfir/bin/python3 /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p  "$triage_dir/WindowsEventLogs/evtx_dump/" -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-in-evtx.csv
+    if [  -f "$triage_dir/lolbas/lolbas-in-evtx.csv" ] ; then
+      cat $triage_dir/lolbas/lolbas-in-evtx.csv |awk -F',' '{print ","$1","$2}'|sort |uniq -c |sort -rn |sed 's/ //g' >> $triage_dir/lolbas/lolbas-stats-$comp_name.csv
+      sed -i "1i lolbas_file,source,message" $triage_dir/lolbas/lolbas-in-evtx.csv
+    fi
   fi
     
-    #***** Lolbas in Triage Timeline *****************************
-  if [ -f "$timeline_dir/Triage-Timeline-$comp_name.csv" ]; then
-    make_green "Searching for executables identified as lolbas in $timeline_dir/Triage-Timeline-$comp_name.csv"
-    echo "lolbas files in Triage-Timeline-$comp_name.csv (https://lolbas-project.github.io/)
-   
-    " >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
-    echo "$d
-    ********************************************
-    Count Lolfile" >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
+  #***** Lolbas in  Alert *****************************alert
+ 
+  if  [ "$(ls -A $triage_dir/Alert/ 2>/dev/null)" ] ; then
     /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
-    $timeline_dir/Triage-Timeline-$comp_name.csv -l /usr/local/src/lolbas/lolbas.csv | \
-    awk -F',' '{print $1}'|sort |uniq -c |sort -rn \
-    >> $triage_dir/lolbas/lolbas-in-Triage-Timeline.txt
+    $triage_dir/Alert/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
   fi
+  
+  #***** Lolbas in prefetch ***************************** 
+  if  [ "$(ls -A $triage_dir/Prefetch/ 2>/dev/null)" ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/Prefetch/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+  
+    #***** Lolbas in AmCache ***************************** 
+  if  [ "$(ls -A $triage_dir/Amcache/ 2>/dev/null)" ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/Amcache/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+  
+  #***** Lolbas in Program Execution ***************************** 
+  if  [ "$(ls -A $triage_dir/Registry/Regripper/Program_Execution 2>/dev/null)" ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/Registry/Regripper/Program_Execution -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+  
+  #***** Lolbas in Run Keys ***************************** 
+  if  [ "$(ls -A $triage_dir/Registry/Regripper/Run_Keys 2>/dev/null)" ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/Registry/Regripper/Run_Keys -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+  
+  #***** Lolbas in Services ***************************** 
+  if  [ "$(ls -A $triage_dir/Services/ 2>/dev/null)" ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/Services/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+  
+  #***** Lolbas in Bits ***************************** 
+  if  [ $( -f "$triage_dir/BITS/parse_evtx_BITS.py-$comp_name.csv" 2>/dev/null) ] ; then
+    /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+    $triage_dir/BITS/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+
+
+  #insert header
+  if  [ -f "$triage_dir/lolbas/lolbas-$comp_name.csv" ] ; then
+    cat $triage_dir/lolbas/lolbas-$comp_name.csv |awk -F',' '{print ","$1","$2}'|sort |uniq -c |sort -rn |sed 's/ //g' >> $triage_dir/lolbas/lolbas-stats-$comp_name.csv
+    sed -i "1i lolbas_file,source,message" $triage_dir/lolbas/lolbas-$comp_name.csv
+  fi
+
     #***** Lolbas in SRUM Dump *****************************
   if [  -f "$triage_dir/SRUM/srum_dump-$comp_name.xlsx" ]; then
     make_green "Searching for executables identified as lolbas in srum_dump-$comp_name.xlsx"
     cd "$triage_dir/SRUM/"
-    sudo ssconvert -S "srum_dump-$comp_name.xlsx" srum_dump-$comp_name.csv 2>/dev/null && \
-      echo "lolbas files in srum_dump-$comp_name.xlsx (https://lolbas-project.github.io/)
-    
-    ">> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt 
+    sudo ssconvert -S "srum_dump-$comp_name.xlsx" srum_dump-$comp_name.csv 2>/dev/null
     ls *csv* |\
     while read d;
     do
-      a=$(/envs/dfir/bin/python3 /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p  "$d" -l /usr/local/src/lolbas/lolbas.csv|\
-      awk -F',' '{print $1}'|sort |uniq -c |sort -rn)
-      [ "$a" != '' ] && echo "********************************************
-      $d
-Count Lolfile" >> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt 
-      [ "$a" != '' ] &&  echo "$a"|sed -E 's/([0-9]+) /\t \n  \1 /g' >> $triage_dir/lolbas/lolbas-in-srum_dump-$comp_name.txt
+      /envs/dfir/bin/python /usr/local/src/dfir-scripts/WinEventLogs/scanforlolbas.py -p \
+      $triage_dir/SRUM/ -l /usr/local/src/lolbas/lolbas.csv >> $triage_dir/lolbas/lolbas-srum-$comp_name.csv
     done
+    sleep .5
+    if [  -f "$triage_dir/lolbas/lolbas-srum-$comp_name.csv" ] ; then
+      cat $triage_dir/lolbas/lolbas-srum-$comp_name.csv |awk -F',' '{print ","$1","$2}'|sort |uniq -c |sort -rn |sed 's/ //g'  >> $triage_dir/lolbas/lolbas-stats-$comp_name.csv
+      sed -i "1i lolbas_file,source,message" $triage_dir/lolbas/lolbas-srum-$comp_name.csv
+    fi
   fi
+  if [  -f "$triage_dir/lolbas/lolbas-stats-$comp_name.csv" ] ; then
+    sed -i "1i count,lolbas_file,source" $triage_dir/lolbas/lolbas-stats-$comp_name.csv
+  fi
+  
+    
   #***** Lolbas in Windows Timeline *****************************
   find $triage_dir/ActivitiesCache/ -type f 2>/dev/null |grep WindowsTimeline.sql | \
     while read f;
