@@ -29,9 +29,6 @@ function grab-winfiles(){
            get_computer_name
            set_dsource_path          
            echo "#### Acquistion Log $comp_name  ####" >  $case_dir/$comp_name-Acquisition.log.txt
-           get_logsize
-           get_usnjrlnsize
-           yes-no && get_usnjrnl
            # Begin Acquisition
            echo ""
            get_mft
@@ -126,27 +123,6 @@ function set_output_file(){
 
 
 ##############ACQUISITION FUNCTIONS############################
-
-#Check Size of Windows Logs and option to include in backup
-function get_logsize(){
-    cd $mount_dir
-    find -maxdepth 1 -type d  -iname "inetpub"|while read d;
-    do
-      du -sh $d
-    done
-    find $winsysdir -maxdepth 2 -type d -iname "LogFiles"|while read d;
-    do
-      du -sh $d
-    done
-    makered "COPY WINDOWS LOGFILES?" && yes-no && get_logs="yes"
-}
-
-#Check USNJRNL Size and option to include in backup
-function get_usnjrlnsize(){
-    cd $mount_dir
-    du -sh \$Extend/\$UsnJrnl:\$J
-    makered "PROCESS \$USNJRNL File?"
-}
 
 #Copy Windows Journal file: USNJRNL:$J
 function get_usnjrnl(){
