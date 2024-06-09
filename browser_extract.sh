@@ -76,7 +76,7 @@ function chrome2tln(){
     # Run Hindsight on Users Directory
     echo "Running Hindsight on $user_dir Directory"
     mkdir -p $output_dir/tmp
-    /envs/dfir/bin/python3 /usr/local/src/Hindsight/hindsight.py   -i "$input_path" -o "$output_dir/Hindsight" -l "$output_dir/hindsight.log" --temp_dir $output_dir/tmp
+    /root/.local/pipx/venvs/pyhindsight/bin/hindsight.py -i "$input_path" -o "$output_dir/Hindsight" -l "$output_dir/hindsight.log" --temp_dir $output_dir/tmp
   fi
 }
 
@@ -112,7 +112,7 @@ function firefox2tln(){
 }
 
 function webcachev_dump(){
-  web_cachev=$(find $input_path/Users/*/AppData/Local/Microsoft/Windows/WebCache -maxdepth 2 -type f |grep -i -m1 "WebcacheV" )
+  web_cachev=$(find $input_path/Users/*/AppData/Local/Microsoft/Windows/WebCache -maxdepth 2 -type f 2>/dev/null|grep -i -m1 "WebcacheV" )
   if [  -f "$web_cachev" ]; then
     echo "Extracting any IE WebcacheV0x.dat files (esedbexport)"
     find "$input_path/Users/" -maxdepth 2 ! -type l|grep -i ntuser.dat$ |\
