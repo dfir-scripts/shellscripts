@@ -4,15 +4,13 @@
 
 function extract_firefox() {
   local input_path=$1
-  local output_format=$2  # Pass the output format (csv or tln)
+  local output_format=$2
 
-  # Locate Firefox profile directories
-  firefox_dirs=$(find "$input_path" -type d -path "*/AppData/Roaming/Mozilla/Firefox/Profiles/*")
+  firefox_dirs=$(find $input_path/*/AppData/Roaming/Mozilla/Firefox/Profiles/* -maxdepth 0 -type d 2>/dev/null)
 
   if [ -n "$firefox_dirs" ]; then
     while read -r dir; do
       browser_type="Firefox"
-      # Extract the username from the directory path (e.g., /mnt/Users/JohnDoe -> JohnDoe)
       user_name=$(echo "$dir" | awk -F'/' '{for (i=1; i<=NF; i++) if ($i == "Users") print $(i+1)}')
 
       if [ -f "$dir/places.sqlite" ]; then
@@ -61,8 +59,6 @@ function extract_firefox() {
           }'
       fi
     done <<< "$firefox_dirs"
-  else
-    echo "No Firefox profiles found in $input_path"
   fi
 }
 
@@ -83,11 +79,9 @@ while getopts ":c" opt; do
 done
 shift $((OPTIND - 1))
 
-# Check for required argument
 if [ $# -ne 1 ]; then
-  echo "Usage: $0 [-c] <path_to_users_or_user_directory>"
+  echo "Usage: $0 [-c] <path_to_users_directory>"
   exit 1
 fi
 
-# Call the function with the input path and output format
 extract_firefox "$1" "$output_format"
